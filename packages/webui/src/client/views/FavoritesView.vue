@@ -4,7 +4,7 @@ import BaseTabs from "@/components/globals/BaseTabs.vue";
 import CoverContainer from "@/components/globals/CoverContainer.vue";
 import PreviewControls from "@/components/globals/PreviewControls.vue";
 import { useFavorites } from "@/use/favorites";
-import { aggregateDownloadLinks, sendAddToQueue } from "@/utils/downloads";
+import { sendAddToQueue, sendAddToQueueByIds } from "@/utils/downloads";
 import { emitter } from "@/utils/emitter";
 import { toast } from "@/utils/toasts";
 import { convertDuration } from "@/utils/utils";
@@ -65,8 +65,14 @@ function downloadAllOfType() {
 				const lovedTracks = getLovedTracksPlaylist();
 				sendAddToQueue(lovedTracks.link);
 			}
-		} else {
-			sendAddToQueue(aggregateDownloadLinks(toDownload));
+			return;
+		}
+
+		if (toDownload?.length) {
+			sendAddToQueueByIds(
+				toDownload.map((release) => release.id),
+				state.activeTab
+			);
 		}
 	} catch (error) {
 		console.error(error.message);
