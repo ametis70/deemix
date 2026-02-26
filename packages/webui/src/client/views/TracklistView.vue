@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { isEmpty } from "lodash-es";
-import { sendAddToQueue } from "@/utils/downloads";
+import { sendAddToQueue, sendAddToQueueByIds } from "@/utils/downloads";
 import { convertDuration } from "@/utils/utils";
 import { emitter } from "@/utils/emitter";
 import { useI18n } from "vue-i18n";
@@ -50,6 +50,26 @@ function selectedLinks() {
 		});
 	}
 	return selected.join(";");
+}
+function selectedTrackIds() {
+	const selected = [];
+	if (body.value) {
+		body.value.forEach((item) => {
+			if (item.type === "track" && item.selected) selected.push(item.id);
+		});
+	}
+	return selected;
+}
+function addSelectionToQueue() {
+	if (type.value === "spotifyPlaylist") {
+		const selected = selectedLinks();
+		if (!selected) return;
+		sendAddToQueue(selected);
+		return;
+	}
+	const ids = selectedTrackIds();
+	if (!ids.length) return;
+	sendAddToQueueByIds(ids, "track");
 }
 function showAlbum(data) {
 	reset();
@@ -377,9 +397,8 @@ onMounted(() => {
 				}}
 			</button>
 			<button
-				:data-link="selectedLinks()"
 				class="btn btn-primary flex items-center"
-				@click.stop="addToQueue"
+				@click.stop="addSelectionToQueue"
 			>
 				{{ t("tracklist.downloadSelection")
 				}}<i class="material-icons ml-2">file_download</i>
