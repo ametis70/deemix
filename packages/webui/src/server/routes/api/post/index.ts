@@ -1,4 +1,5 @@
 import changeAccount from "./changeAccount.js";
+import addToQueueByIds from "./addToQueueByIds.js";
 import loginArl from "./loginArl.js";
 import addToQueue from "./addToQueue.js";
 import loginEmail from "./loginEmail.js";
@@ -13,6 +14,7 @@ export default [
 	changeAccount,
 	loginArl,
 	addToQueue,
+	addToQueueByIds,
 	loginEmail,
 	cancelAllDownloads,
 	removeFinishedDownloads,

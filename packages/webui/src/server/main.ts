@@ -59,8 +59,8 @@ const listener: Listener = {
 const deemixApp = new DeemixApp(listener);
 
 /* === Middlewares === */
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: false, limit: "2mb" }));
 app.use(cookieParser());
 app.use(
 	// @ts-expect-error
