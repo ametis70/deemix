@@ -94,11 +94,11 @@ export class SyncService {
 
 		this.intervals.set(userId, interval);
 
-await this.stateManager.appendEvent(userId, {
-		type: "sync_started",
-		severity: "info",
-		message: "Sync started",
-	});
+		await this.stateManager.appendEvent(userId, {
+			type: "sync_started",
+			severity: "info",
+			message: "Sync started",
+		});
 	}
 
 	async stopSync(userId: string): Promise<void> {
@@ -112,11 +112,17 @@ await this.stateManager.appendEvent(userId, {
 		state.status = "idle";
 		await this.stateManager.saveUserState(userId, state);
 
-await this.stateManager.appendEvent(userId, {
-		type: "sync_completed",
-		severity: "info",
-		message: "Sync stopped by user",
-	});
+		await this.stateManager.appendEvent(userId, {
+			type: "sync_completed",
+			severity: "info",
+			message: "Sync stopped by user",
+		});
+	}
+
+	async triggerSyncNow(userId: string, sessionId: string): Promise<void> {
+		this.sessionMap.set(userId, sessionId);
+
+		await this.runSyncCycle(userId, sessionId);
 	}
 
 	async updateConfig(
@@ -166,7 +172,7 @@ await this.stateManager.appendEvent(userId, {
 	async redownloadItem(
 		userId: string,
 		itemId: string,
-		itemType: "track" | "album" | "playlist"
+		itemType: "track" | "album" | "playlist" | "artist"
 	): Promise<void> {
 		const trackedItems = await this.stateManager.loadTrackedItems(userId);
 		const collectionKey = `${itemType}s` as keyof typeof trackedItems;
@@ -183,15 +189,15 @@ await this.stateManager.appendEvent(userId, {
 
 		await this.stateManager.saveTrackedItems(userId, trackedItems);
 
-await this.stateManager.appendEvent(userId, {
-		type: "item_downloaded",
-		severity: "info",
-		message: `Item ${item.title} marked for redownload`,
-		details: {
-			itemId: item.id,
-			itemType: item.type,
-		},
-	});
+		await this.stateManager.appendEvent(userId, {
+			type: "item_downloaded",
+			severity: "info",
+			message: `Item ${item.title} marked for redownload`,
+			details: {
+				itemId: item.id,
+				itemType: item.type,
+			},
+		});
 	}
 
 	private async runSyncCycle(userId: string, sessionId: string): Promise<void> {
@@ -222,24 +228,26 @@ await this.stateManager.appendEvent(userId, {
 				...favorites.tracks.filter((t) => !trackedItems.tracks[t.id]),
 				...favorites.albums.filter((a) => !trackedItems.albums[a.id]),
 				...favorites.playlists.filter((p) => !trackedItems.playlists[p.id]),
+				...favorites.artists.filter((a) => !trackedItems.artists[a.id]),
 			];
 
 			const failedTrackedItems = [
-			...Object.values(trackedItems.tracks),
-			...Object.values(trackedItems.albums),
-			...Object.values(trackedItems.playlists),
-		].filter(
-			(item) =>
-				item.status === "failed" &&
-				item.retryCount < state.settings.retry.maxAttempts
-		);
+				...Object.values(trackedItems.tracks),
+				...Object.values(trackedItems.albums),
+				...Object.values(trackedItems.playlists),
+				...Object.values(trackedItems.artists),
+			].filter(
+				(item) =>
+					item.status === "failed" &&
+					item.retryCount < state.settings.retry.maxAttempts
+			);
 
-		const failedItems = failedTrackedItems.map((item) => ({
-			id: item.id,
-			type: item.type,
-			title: item.title,
-			artist: item.artist,
-		}));
+			const failedItems = failedTrackedItems.map((item) => ({
+				id: item.id,
+				type: item.type,
+				title: item.title,
+				artist: item.artist,
+			}));
 
 			const itemsToDownload = [...newItems, ...failedItems];
 
@@ -274,15 +282,15 @@ await this.stateManager.appendEvent(userId, {
 					if (!existingBroken.find((b) => b.originalId === broken.originalId)) {
 						existingBroken.push(broken);
 
-await this.stateManager.appendEvent(userId, {
-					type: "broken_album_detected",
-					severity: "warning",
-					message: `Album "${broken.title}" ID changed`,
-					details: {
-						itemId: broken.originalId,
-						itemType: "album",
-					},
-				});
+						await this.stateManager.appendEvent(userId, {
+							type: "broken_album_detected",
+							severity: "warning",
+							message: `Album "${broken.title}" ID changed`,
+							details: {
+								itemId: broken.originalId,
+								itemType: "album",
+							},
+						});
 					}
 				}
 
@@ -297,11 +305,11 @@ await this.stateManager.appendEvent(userId, {
 
 			await this.stateManager.saveUserState(userId, state);
 
-await this.stateManager.appendEvent(userId, {
-			type: "sync_completed",
-			severity: "info",
-			message: `Sync completed successfully`,
-		});
+			await this.stateManager.appendEvent(userId, {
+				type: "sync_completed",
+				severity: "info",
+				message: `Sync completed successfully`,
+			});
 		} catch (error) {
 			state.status = "error";
 			state.currentRunStartedAt = null;
@@ -310,14 +318,14 @@ await this.stateManager.appendEvent(userId, {
 
 			await this.stateManager.saveUserState(userId, state);
 
-await this.stateManager.appendEvent(userId, {
-			type: "sync_failed",
-			severity: "error",
-			message: `Sync failed: ${error instanceof Error ? error.message : String(error)}`,
-			details: {
-				error: error instanceof Error ? error.message : String(error),
-			},
-		});
+			await this.stateManager.appendEvent(userId, {
+				type: "sync_failed",
+				severity: "error",
+				message: `Sync failed: ${error instanceof Error ? error.message : String(error)}`,
+				details: {
+					error: error instanceof Error ? error.message : String(error),
+				},
+			});
 
 			throw error;
 		} finally {

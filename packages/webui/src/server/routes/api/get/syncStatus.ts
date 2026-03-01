@@ -19,11 +19,11 @@ const handler: RequestHandler = async (req, res) => {
 		const stateManager = syncService["stateManager"];
 		const trackedItems = await stateManager.loadTrackedItems(userId);
 
-		// Compute summary statistics
 		const allItems = [
 			...Object.values(trackedItems.tracks),
 			...Object.values(trackedItems.albums),
 			...Object.values(trackedItems.playlists),
+			...Object.values(trackedItems.artists),
 		];
 
 		const summary = {

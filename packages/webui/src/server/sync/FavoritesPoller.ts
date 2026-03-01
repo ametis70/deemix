@@ -21,12 +21,23 @@ export interface FavoritePlaylist {
 	title: string;
 }
 
-export type FavoriteItem = FavoriteTrack | FavoriteAlbum | FavoritePlaylist;
+export interface FavoriteArtist {
+	id: string;
+	type: "artist";
+	title: string;
+}
+
+export type FavoriteItem =
+	| FavoriteTrack
+	| FavoriteAlbum
+	| FavoritePlaylist
+	| FavoriteArtist;
 
 export interface FavoriteItems {
 	tracks: FavoriteTrack[];
 	albums: FavoriteAlbum[];
 	playlists: FavoritePlaylist[];
+	artists: FavoriteArtist[];
 }
 
 export class FavoritesPoller {
@@ -44,11 +55,11 @@ export class FavoritesPoller {
 			tracks: [],
 			albums: [],
 			playlists: [],
+			artists: [],
 		};
 
 		const userId = this.dz.currentUser.id;
 
-		// Fetch each type in parallel if enabled
 		const promises: Promise<void>[] = [];
 
 		if (this.scope.tracks) {
@@ -75,6 +86,14 @@ export class FavoritesPoller {
 			);
 		}
 
+		if (this.scope.artists) {
+			promises.push(
+				this.fetchFavoriteArtists(String(userId)).then((artists) => {
+					result.artists = artists;
+				})
+			);
+		}
+
 		await Promise.all(promises);
 
 		return result;
@@ -85,7 +104,6 @@ export class FavoritesPoller {
 		let start = 0;
 		const batchSize = 1000;
 
-		// Paginate through all favorite tracks
 		while (true) {
 			const batch = await this.dz.gw.get_my_favorite_tracks({
 				limit: batchSize,
@@ -107,7 +125,6 @@ export class FavoritesPoller {
 				}
 			}
 
-			// If we got less than batchSize, we've reached the end
 			if (batch.length < batchSize) {
 				break;
 			}
@@ -115,7 +132,6 @@ export class FavoritesPoller {
 			start += batchSize;
 		}
 
-		// Deduplicate by id
 		const seen = new Set<string>();
 		return tracks.filter((track) => {
 			if (seen.has(track.id)) {
@@ -127,7 +143,6 @@ export class FavoritesPoller {
 	}
 
 	private async fetchFavoriteAlbums(userId: string): Promise<FavoriteAlbum[]> {
-		// Use limit: -1 to get all albums (same pattern as getUserFavorites)
 		const albums = await this.dz.gw.get_user_albums(userId, { limit: -1 });
 
 		const result: FavoriteAlbum[] = [];
@@ -143,7 +158,6 @@ export class FavoritesPoller {
 			}
 		}
 
-		// Deduplicate by id
 		const seen = new Set<string>();
 		return result.filter((album) => {
 			if (seen.has(album.id)) {
@@ -157,7 +171,6 @@ export class FavoritesPoller {
 	private async fetchFavoritePlaylists(
 		userId: string
 	): Promise<FavoritePlaylist[]> {
-		// Use limit: -1 to get all playlists
 		const playlists = await this.dz.gw.get_user_playlists(userId, {
 			limit: -1,
 		});
@@ -174,13 +187,39 @@ export class FavoritesPoller {
 			}
 		}
 
-		// Deduplicate by id
 		const seen = new Set<string>();
 		return result.filter((playlist) => {
 			if (seen.has(playlist.id)) {
 				return false;
 			}
 			seen.add(playlist.id);
+			return true;
+		});
+	}
+
+	private async fetchFavoriteArtists(
+		userId: string
+	): Promise<FavoriteArtist[]> {
+		const artists = await this.dz.gw.get_user_artists(userId, { limit: -1 });
+
+		const result: FavoriteArtist[] = [];
+
+		for (const artist of artists) {
+			if (artist && artist.id) {
+				result.push({
+					id: String(artist.id),
+					type: "artist",
+					title: artist.name || "Unknown",
+				});
+			}
+		}
+
+		const seen = new Set<string>();
+		return result.filter((artist) => {
+			if (seen.has(artist.id)) {
+				return false;
+			}
+			seen.add(artist.id);
 			return true;
 		});
 	}

@@ -26,10 +26,8 @@ export class DownloadOrchestrator {
 			failed: 0,
 		};
 
-		// Load tracked items to check status
 		const trackedItems = await this.stateManager.loadTrackedItems(userId);
 
-		// Filter items that haven't been successfully downloaded
 		const itemsToEnqueue: FavoriteItem[] = [];
 		for (const item of items) {
 			const collectionKey = `${item.type}s` as keyof typeof trackedItems;
@@ -40,14 +38,8 @@ export class DownloadOrchestrator {
 			} else {
 				result.skipped++;
 			}
-
-			// Respect batch size
-			if (itemsToEnqueue.length >= batchSize) {
-				break;
-			}
 		}
 
-		// Get Deezer client for this session
 		const { sessionDZ } = await import("@/deemixApp.js");
 		const dz = sessionDZ[sessionId];
 
@@ -55,82 +47,82 @@ export class DownloadOrchestrator {
 			throw new Error("Not logged in to Deezer");
 		}
 
-		// Enqueue each item
-		for (const item of itemsToEnqueue) {
-			try {
-				// Convert to Deezer URL format
-				let url: string;
-				switch (item.type) {
-					case "track":
-						url = `https://www.deezer.com/track/${item.id}`;
-						break;
-					case "album":
-						url = `https://www.deezer.com/album/${item.id}`;
-						break;
-					case "playlist":
-						url = `https://www.deezer.com/playlist/${item.id}`;
-						break;
-				}
+		for (let i = 0; i < itemsToEnqueue.length; i += batchSize) {
+			const batch = itemsToEnqueue.slice(i, i + batchSize);
 
-				// Use default bitrate from settings
-				const bitrate = this.deemixApp.settings.maxBitrate;
+			for (const item of batch) {
+				try {
+					let url: string;
+					switch (item.type) {
+						case "track":
+							url = `https://www.deezer.com/track/${item.id}`;
+							break;
+						case "album":
+							url = `https://www.deezer.com/album/${item.id}`;
+							break;
+						case "playlist":
+							url = `https://www.deezer.com/playlist/${item.id}`;
+							break;
+						case "artist":
+							url = `https://www.deezer.com/artist/${item.id}`;
+							break;
+					}
 
-				// Add to queue
-				await this.deemixApp.addToQueue(dz, [url], bitrate, false);
+					const bitrate = this.deemixApp.settings.maxBitrate;
 
-				// Update tracked item status to 'downloading'
-				const collectionKey = `${item.type}s` as keyof typeof trackedItems;
-				if (!trackedItems[collectionKey][item.id]) {
-					trackedItems[collectionKey][item.id] = {
-						id: item.id,
-						type: item.type,
-						title: item.title,
-						artist: item.type === "playlist" ? undefined : item.artist,
-						status: "downloading",
-						addedAt: new Date().toISOString(),
-						syncedAt: null,
-						retryCount: 0,
-						lastError: null,
-						lastAttemptAt: new Date().toISOString(),
-					};
-				} else {
-					trackedItems[collectionKey][item.id].status = "downloading";
-					trackedItems[collectionKey][item.id].lastAttemptAt =
-						new Date().toISOString();
-				}
+					await this.deemixApp.addToQueue(dz, [url], bitrate, false);
 
-				result.enqueued++;
-			} catch (error) {
-				result.failed++;
+					const collectionKey = `${item.type}s` as keyof typeof trackedItems;
+					if (!trackedItems[collectionKey][item.id]) {
+						trackedItems[collectionKey][item.id] = {
+							id: item.id,
+							type: item.type,
+							title: item.title,
+							artist: "artist" in item ? item.artist : undefined,
+							status: "downloading",
+							addedAt: new Date().toISOString(),
+							syncedAt: null,
+							retryCount: 0,
+							lastError: null,
+							lastAttemptAt: new Date().toISOString(),
+						};
+					} else {
+						trackedItems[collectionKey][item.id].status = "downloading";
+						trackedItems[collectionKey][item.id].lastAttemptAt =
+							new Date().toISOString();
+					}
 
-				// Update tracked item with error
-				const collectionKey = `${item.type}s` as keyof typeof trackedItems;
-				if (!trackedItems[collectionKey][item.id]) {
-					trackedItems[collectionKey][item.id] = {
-						id: item.id,
-						type: item.type,
-						title: item.title,
-						artist: item.type === "playlist" ? undefined : item.artist,
-						status: "failed",
-						addedAt: new Date().toISOString(),
-						syncedAt: null,
-						retryCount: 1,
-						lastError: error instanceof Error ? error.message : String(error),
-						lastAttemptAt: new Date().toISOString(),
-					};
-				} else {
-					trackedItems[collectionKey][item.id].status = "failed";
-					trackedItems[collectionKey][item.id].retryCount++;
-					trackedItems[collectionKey][item.id].lastError =
-						error instanceof Error ? error.message : String(error);
-					trackedItems[collectionKey][item.id].lastAttemptAt =
-						new Date().toISOString();
+					result.enqueued++;
+				} catch (error) {
+					result.failed++;
+
+					const collectionKey = `${item.type}s` as keyof typeof trackedItems;
+					if (!trackedItems[collectionKey][item.id]) {
+						trackedItems[collectionKey][item.id] = {
+							id: item.id,
+							type: item.type,
+							title: item.title,
+							artist: "artist" in item ? item.artist : undefined,
+							status: "failed",
+							addedAt: new Date().toISOString(),
+							syncedAt: null,
+							retryCount: 1,
+							lastError: error instanceof Error ? error.message : String(error),
+							lastAttemptAt: new Date().toISOString(),
+						};
+					} else {
+						trackedItems[collectionKey][item.id].status = "failed";
+						trackedItems[collectionKey][item.id].retryCount++;
+						trackedItems[collectionKey][item.id].lastError =
+							error instanceof Error ? error.message : String(error);
+						trackedItems[collectionKey][item.id].lastAttemptAt =
+							new Date().toISOString();
+					}
 				}
 			}
-		}
 
-		// Save updated tracked items
-		await this.stateManager.saveTrackedItems(userId, trackedItems);
+			await this.stateManager.saveTrackedItems(userId, trackedItems);
+		}
 
 		return result;
 	}
