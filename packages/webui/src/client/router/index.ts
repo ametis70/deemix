@@ -18,6 +18,7 @@ import Tracklist from "@/views/TracklistView.vue";
 
 const Search = () => import("@/views/SearchView.vue");
 const Settings = () => import("@/views/SettingsPage.vue");
+const Sync = () => import("@/views/SyncView.vue");
 const Artist = () => import("@/views/ArtistView.vue");
 const LinkAnalyzer = () => import("@/views/LinkAnalyzer.vue");
 
@@ -103,6 +104,11 @@ const routes: RouteRecordRaw[] = [
 		path: "/settings",
 		name: "Settings",
 		component: Settings,
+	},
+	{
+		path: "/sync",
+		name: "Sync",
+		component: Sync,
 	},
 	{
 		path: "/search",

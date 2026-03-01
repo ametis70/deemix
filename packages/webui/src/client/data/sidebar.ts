@@ -30,6 +30,12 @@ export const mainNavItems = [
 		label: "sidebar.settings",
 	},
 	{
+		name: "sync",
+		routerName: "Sync",
+		icon: "sync",
+		label: "sidebar.sync",
+	},
+	{
 		name: "about",
 		routerName: "About",
 		icon: "info",
