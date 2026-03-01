@@ -87,6 +87,20 @@ export interface Settings {
 	featuredToTitle?: string;
 	titleCasing?: string;
 	artistCasing?: string;
+	sync: {
+		enabled: boolean;
+		interval: number;
+		batchSize: number;
+		scope: {
+			tracks: boolean;
+			albums: boolean;
+			playlists: boolean;
+		};
+		retry: {
+			maxAttempts: number;
+			baseDelay: number;
+		};
+	};
 }
 
 export interface SpotifySettings {

@@ -103,6 +103,20 @@ export const DEFAULT_SETTINGS: Settings = {
 		singleAlbumArtist: false,
 		coverDescriptionUTF8: false,
 	},
+	sync: {
+		enabled: false,
+		interval: 900000,
+		batchSize: 10,
+		scope: {
+			tracks: true,
+			albums: true,
+			playlists: false,
+		},
+		retry: {
+			maxAttempts: 5,
+			baseDelay: 60000,
+		},
+	},
 };
 
 export function saveSettings(settings: Settings, configFolder) {
