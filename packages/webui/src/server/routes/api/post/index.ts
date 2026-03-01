@@ -13,6 +13,7 @@ import syncStart from "./syncStart.js";
 import syncStop from "./syncStop.js";
 import syncConfigure from "./syncConfigure.js";
 import syncRedownload from "./syncRedownload.js";
+import syncTrigger from "./syncTrigger.js";
 
 export default [
 	changeAccount,
@@ -30,4 +31,5 @@ export default [
 	syncStop,
 	syncConfigure,
 	syncRedownload,
+	syncTrigger,
 ];
