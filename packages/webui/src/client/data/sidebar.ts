@@ -18,6 +18,12 @@ export const mainNavItems = [
 		label: "sidebar.favorites",
 	},
 	{
+		name: "sync",
+		routerName: "Sync",
+		icon: "sync",
+		label: "sidebar.sync",
+	},
+	{
 		name: "charts",
 		routerName: "Charts",
 		icon: "show_chart",
@@ -28,12 +34,6 @@ export const mainNavItems = [
 		routerName: "Settings",
 		icon: "settings",
 		label: "sidebar.settings",
-	},
-	{
-		name: "sync",
-		routerName: "Sync",
-		icon: "sync",
-		label: "sidebar.sync",
 	},
 	{
 		name: "about",
