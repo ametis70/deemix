@@ -2,7 +2,7 @@ import { DeemixApp } from "@/deemixApp.js";
 import { logger, removeOldLogs } from "@/helpers/logger.js";
 import { loadLoginCredentials } from "@/helpers/loginStorage.js";
 import cookieParser from "cookie-parser";
-import { utils, type Listener } from "deemix";
+import { utils, type Listener, SyncStateManager } from "deemix";
 import express, { type Express } from "express";
 import session from "express-session";
 import memorystore from "memorystore";
@@ -19,6 +19,7 @@ import { registerApis } from "./routes/api/register.js";
 import indexRouter from "./routes/index.js";
 import type { Arguments } from "./types.js";
 import { registerWebsocket } from "./websocket/index.js";
+import { SyncService } from "./sync/SyncService.js";
 
 const MemoryStore = memorystore(session);
 
@@ -58,6 +59,11 @@ const listener: Listener = {
 };
 const deemixApp = new DeemixApp(listener);
 
+/* === Sync Service === */
+const configFolder = utils.getConfigFolder();
+const stateManager = new SyncStateManager(configFolder);
+const syncService = new SyncService(deemixApp, stateManager, configFolder);
+
 /* === Middlewares === */
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: false, limit: "2mb" }));
@@ -87,6 +93,7 @@ registerApis(app);
 /* === Config === */
 app.set("port", serverPort);
 app.set("deemix", deemixApp);
+app.set("syncService", syncService);
 
 /* === Server port === */
 const server = app.listen({
@@ -110,7 +117,34 @@ server.on("error", getErrorCb(serverPort));
 server.on("listening", getListeningCb(server));
 registerWebsocket(wss, deemixApp);
 
+/* === Sync Service Initialization === */
+syncService.initializeAllUsers().catch((error) => {
+	logger.error(
+		`Failed to initialize sync service: ${error instanceof Error ? error.message : String(error)}`
+	);
+});
+
 /* === Remove Old logs files === */
 removeOldLogs(5);
+
+/* === Shutdown handlers === */
+const gracefulShutdown = async (signal: string) => {
+	logger.info(`${signal} received, shutting down gracefully...`);
+	try {
+		await syncService.shutdown();
+		logger.info("Sync service shut down successfully");
+	} catch (error) {
+		logger.error(
+			`Error during sync service shutdown: ${error instanceof Error ? error.message : String(error)}`
+		);
+	}
+	server.close(() => {
+		logger.info("HTTP server closed");
+		process.exit(0);
+	});
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 export { app, deemixApp, server };

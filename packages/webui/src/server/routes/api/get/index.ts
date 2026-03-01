@@ -18,6 +18,8 @@ import getUserFavorites from "./getUserFavorites.js";
 import getQueue from "./getQueue.js";
 import spotifyStatus from "./spotifyStatus.js";
 import checkForUpdates from "./checkForUpdates.js";
+import syncStatus from "./syncStatus.js";
+import syncEvents from "./syncEvents.js";
 
 export default [
 	connect,
@@ -40,4 +42,6 @@ export default [
 	getQueue,
 	spotifyStatus,
 	checkForUpdates,
+	syncStatus,
+	syncEvents,
 ];
