@@ -113,5 +113,8 @@ export * from "./types/index.js";
 export * as utils from "./utils/index.js";
 export * from "./download-objects/index.js";
 
+export * from "./sync/SyncStateManager.js";
+export * from "./sync/types.js";
+
 // Exporting the organized objects
 export { Downloader, generateDownloadObject, itemgen, parseLink };
