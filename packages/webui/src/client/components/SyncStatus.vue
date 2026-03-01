@@ -1,36 +1,40 @@
 <script setup lang="ts">
 import { syncApi } from "@/utils/syncApi";
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n();
 
 const status = ref<any>(null);
 const pollInterval = ref<number | null>(null);
 
 const enabled = computed(() => status.value?.status?.enabled || false);
-const statusColor = computed(() => {
-	if (!status.value) return "grey";
+
+const statusBgClass = computed(() => {
+	if (!status.value) return "bg-gray-500";
 	const st = status.value.status?.status;
-	if (st === "running") return "green";
-	if (st === "error") return "red";
-	return "grey";
+	if (st === "running") return "bg-green-600";
+	if (st === "error") return "bg-red-600";
+	return "bg-gray-500";
 });
 
 const statusText = computed(() => {
-	if (!status.value) return "Unknown";
+	if (!status.value) return t("sync.status.unknown");
 	const st = status.value.status?.status;
-	if (st === "running") return "Running";
-	if (st === "error") return "Error";
-	return "Idle";
+	if (st === "running") return t("sync.status.running");
+	if (st === "error") return t("sync.status.error");
+	return t("sync.status.idle");
 });
 
 const lastSync = computed(() => {
 	const timestamp = status.value?.status?.lastSyncAt;
-	if (!timestamp) return "Never";
+	if (!timestamp) return t("sync.status.never");
 	return new Date(timestamp).toLocaleString();
 });
 
 const lastSuccessfulSync = computed(() => {
 	const timestamp = status.value?.status?.lastSuccessfulSyncAt;
-	if (!timestamp) return "Never";
+	if (!timestamp) return t("sync.status.never");
 	return new Date(timestamp).toLocaleString();
 });
 
@@ -70,7 +74,7 @@ function startPolling() {
 		if (enabled.value) {
 			loadStatus();
 		}
-	}, 5000); // Poll every 5 seconds
+	}, 5000);
 }
 
 function stopPolling() {
@@ -90,180 +94,93 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div class="status-container">
-		<h2>Sync Status</h2>
+	<div>
+		<h2 class="mb-6 text-2xl">{{ t("sync.status.title") }}</h2>
 
-		<div class="status-header">
-			<div class="status-badge" :class="`status-${statusColor}`">
+		<div class="mb-8 flex items-center gap-6">
+			<span
+				class="rounded px-3 py-1 text-sm font-semibold uppercase text-white"
+				:class="statusBgClass"
+			>
 				{{ statusText }}
-			</div>
-			<div class="status-info">
-				<div>Last Sync: {{ lastSync }}</div>
-				<div>Last Successful: {{ lastSuccessfulSync }}</div>
-			</div>
-		</div>
-
-		<div class="statistics-grid">
-			<div class="stat-card">
-				<div class="stat-label">Total Synced</div>
-				<div class="stat-value">{{ totalSynced }}</div>
-			</div>
-			<div class="stat-card">
-				<div class="stat-label">Total Failed</div>
-				<div class="stat-value error">{{ totalFailed }}</div>
-			</div>
-			<div class="stat-card">
-				<div class="stat-label">Last Run Duration</div>
-				<div class="stat-value">{{ lastRunDuration }}</div>
+			</span>
+			<div class="flex flex-col gap-1">
+				<p class="text-sm text-[var(--secondary-text)]">
+					{{ t("sync.status.lastSync") }}: {{ lastSync }}
+				</p>
+				<p class="text-sm text-[var(--secondary-text)]">
+					{{ t("sync.status.lastSuccessful") }}: {{ lastSuccessfulSync }}
+				</p>
 			</div>
 		</div>
 
-		<div class="tracked-items">
-			<h3>Tracked Items</h3>
-			<div class="tracked-grid">
-				<div class="tracked-item">
-					<span class="tracked-label">New:</span>
-					<span class="tracked-count">{{ trackedSummary.new }}</span>
+		<div class="mb-8 grid grid-cols-3 gap-4">
+			<div class="rounded-lg bg-[var(--secondary-background)] p-6 text-center">
+				<div class="mb-2 text-sm text-[var(--secondary-text)]">
+					{{ t("sync.status.totalSynced") }}
 				</div>
-				<div class="tracked-item">
-					<span class="tracked-label">Downloading:</span>
-					<span class="tracked-count">{{ trackedSummary.downloading }}</span>
+				<div class="text-3xl font-bold">{{ totalSynced }}</div>
+			</div>
+			<div class="rounded-lg bg-[var(--secondary-background)] p-6 text-center">
+				<div class="mb-2 text-sm text-[var(--secondary-text)]">
+					{{ t("sync.status.totalFailed") }}
 				</div>
-				<div class="tracked-item">
-					<span class="tracked-label">Success:</span>
-					<span class="tracked-count success">{{
+				<div class="text-3xl font-bold text-red-500">
+					{{ totalFailed }}
+				</div>
+			</div>
+			<div class="rounded-lg bg-[var(--secondary-background)] p-6 text-center">
+				<div class="mb-2 text-sm text-[var(--secondary-text)]">
+					{{ t("sync.status.lastRunDuration") }}
+				</div>
+				<div class="text-3xl font-bold">{{ lastRunDuration }}</div>
+			</div>
+		</div>
+
+		<div class="rounded-lg bg-[var(--secondary-background)] p-6">
+			<h3 class="mb-4 text-lg font-medium">
+				{{ t("sync.status.trackedItems") }}
+			</h3>
+			<div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+				<div
+					class="flex items-center justify-between rounded bg-[var(--main-background)] p-3"
+				>
+					<span class="text-sm text-[var(--secondary-text)]">{{
+						t("sync.status.new")
+					}}</span>
+					<span class="text-xl font-semibold">{{ trackedSummary.new }}</span>
+				</div>
+				<div
+					class="flex items-center justify-between rounded bg-[var(--main-background)] p-3"
+				>
+					<span class="text-sm text-[var(--secondary-text)]">{{
+						t("sync.status.downloading")
+					}}</span>
+					<span class="text-xl font-semibold">{{
+						trackedSummary.downloading
+					}}</span>
+				</div>
+				<div
+					class="flex items-center justify-between rounded bg-[var(--main-background)] p-3"
+				>
+					<span class="text-sm text-[var(--secondary-text)]">{{
+						t("sync.status.success")
+					}}</span>
+					<span class="text-xl font-semibold text-green-500">{{
 						trackedSummary.success
 					}}</span>
 				</div>
-				<div class="tracked-item">
-					<span class="tracked-label">Failed:</span>
-					<span class="tracked-count error">{{ trackedSummary.failed }}</span>
+				<div
+					class="flex items-center justify-between rounded bg-[var(--main-background)] p-3"
+				>
+					<span class="text-sm text-[var(--secondary-text)]">{{
+						t("sync.status.failed")
+					}}</span>
+					<span class="text-xl font-semibold text-red-500">{{
+						trackedSummary.failed
+					}}</span>
 				</div>
 			</div>
 		</div>
 	</div>
 </template>
-
-<style scoped>
-.status-container {
-	padding: 2rem;
-	max-width: 800px;
-}
-
-.status-header {
-	display: flex;
-	align-items: center;
-	gap: 1.5rem;
-	margin-bottom: 2rem;
-}
-
-.status-badge {
-	padding: 0.5rem 1rem;
-	border-radius: 4px;
-	font-weight: 600;
-	text-transform: uppercase;
-	font-size: 0.875rem;
-}
-
-.status-grey {
-	background: #6c757d;
-	color: white;
-}
-
-.status-green {
-	background: #28a745;
-	color: white;
-}
-
-.status-red {
-	background: #dc3545;
-	color: white;
-}
-
-.status-info {
-	display: flex;
-	flex-direction: column;
-	gap: 0.25rem;
-	font-size: 0.875rem;
-	color: var(--secondary-text);
-}
-
-.statistics-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: 1rem;
-	margin-bottom: 2rem;
-}
-
-.stat-card {
-	background: var(--secondary-background);
-	padding: 1.5rem;
-	border-radius: 8px;
-	text-align: center;
-}
-
-.stat-label {
-	font-size: 0.875rem;
-	color: var(--secondary-text);
-	margin-bottom: 0.5rem;
-}
-
-.stat-value {
-	font-size: 2rem;
-	font-weight: 700;
-	color: var(--foreground);
-}
-
-.stat-value.error {
-	color: #dc3545;
-}
-
-.tracked-items {
-	background: var(--secondary-background);
-	padding: 1.5rem;
-	border-radius: 8px;
-}
-
-.tracked-items h3 {
-	margin-bottom: 1rem;
-	font-size: 1.125rem;
-}
-
-.tracked-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-	gap: 1rem;
-}
-
-.tracked-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 0.75rem;
-	background: var(--main-background);
-	border-radius: 4px;
-}
-
-.tracked-label {
-	font-size: 0.875rem;
-	color: var(--secondary-text);
-}
-
-.tracked-count {
-	font-size: 1.25rem;
-	font-weight: 600;
-	color: var(--foreground);
-}
-
-.tracked-count.success {
-	color: #28a745;
-}
-
-.tracked-count.error {
-	color: #dc3545;
-}
-
-h2 {
-	margin-bottom: 1.5rem;
-}
-</style>

@@ -7,6 +7,7 @@ export interface SyncConfig {
 		tracks?: boolean;
 		albums?: boolean;
 		playlists?: boolean;
+		artists?: boolean;
 	};
 	retry?: {
 		maxAttempts?: number;
@@ -23,4 +24,5 @@ export const syncApi = {
 		fetchData("syncEvents", limit ? { limit: limit.toString() } : {}),
 	redownload: (itemId: string, itemType: string) =>
 		postToServer("syncRedownload", { itemId, itemType }),
+	triggerNow: () => postToServer("syncTrigger"),
 };
