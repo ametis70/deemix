@@ -2,6 +2,7 @@ export interface SyncScope {
 	tracks: boolean;
 	albums: boolean;
 	playlists: boolean;
+	artists: boolean;
 }
 
 export interface SyncRetryPolicy {
@@ -35,7 +36,7 @@ export interface UserSyncState {
 
 export interface TrackedItem {
 	id: string;
-	type: "track" | "album" | "playlist";
+	type: "track" | "album" | "playlist" | "artist";
 	title: string;
 	artist?: string;
 	status: "new" | "downloading" | "success" | "failed";
@@ -50,6 +51,7 @@ export interface TrackedItems {
 	tracks: Record<string, TrackedItem>;
 	albums: Record<string, TrackedItem>;
 	playlists: Record<string, TrackedItem>;
+	artists: Record<string, TrackedItem>;
 }
 
 export interface SyncEvent {

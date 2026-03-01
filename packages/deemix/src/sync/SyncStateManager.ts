@@ -72,6 +72,7 @@ export class SyncStateManager {
 					tracks: true,
 					albums: true,
 					playlists: false,
+					artists: true,
 				},
 				retry: {
 					maxAttempts: 5,
@@ -98,6 +99,7 @@ export class SyncStateManager {
 			tracks: {},
 			albums: {},
 			playlists: {},
+			artists: {},
 		};
 		return this.readJSON(filePath, defaultItems);
 	}

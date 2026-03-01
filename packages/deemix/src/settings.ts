@@ -111,6 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
 			tracks: true,
 			albums: true,
 			playlists: false,
+			artists: true,
 		},
 		retry: {
 			maxAttempts: 5,

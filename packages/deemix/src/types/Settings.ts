@@ -95,6 +95,7 @@ export interface Settings {
 			tracks: boolean;
 			albums: boolean;
 			playlists: boolean;
+			artists: boolean;
 		};
 		retry: {
 			maxAttempts: number;
