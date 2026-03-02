@@ -1,4 +1,5 @@
 import type { DeemixApp } from "@/deemixApp.js";
+import { logger } from "@/helpers/logger.js";
 import { SyncStateManager } from "deemix";
 import type { FavoriteItem } from "./FavoritesPoller.js";
 
@@ -40,15 +41,28 @@ export class DownloadOrchestrator {
 			}
 		}
 
+		logger.info(
+			`[Sync:Orchestrator] ${items.length} total items, ${itemsToEnqueue.length} to enqueue, ${result.skipped} already successful`
+		);
+
 		const { sessionDZ } = await import("@/deemixApp.js");
 		const dz = sessionDZ[sessionId];
 
 		if (!dz || !dz.loggedIn) {
+			logger.error(
+				`[Sync:Orchestrator] Session ${sessionId} invalid (missing=${!dz}, loggedIn=${dz?.loggedIn})`
+			);
 			throw new Error("Not logged in to Deezer");
 		}
 
+		const totalBatches = Math.ceil(itemsToEnqueue.length / batchSize);
+
 		for (let i = 0; i < itemsToEnqueue.length; i += batchSize) {
 			const batch = itemsToEnqueue.slice(i, i + batchSize);
+			const batchNum = Math.floor(i / batchSize) + 1;
+			logger.info(
+				`[Sync:Orchestrator] Processing batch ${batchNum}/${totalBatches} (${batch.length} items)`
+			);
 
 			for (const item of batch) {
 				try {
@@ -94,6 +108,11 @@ export class DownloadOrchestrator {
 
 					result.enqueued++;
 				} catch (error) {
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
+					logger.error(
+						`[Sync:Orchestrator] Failed to enqueue ${item.type} "${item.title}" (${item.id}): ${errorMessage}`
+					);
 					result.failed++;
 
 					const collectionKey = `${item.type}s` as keyof typeof trackedItems;
@@ -107,14 +126,13 @@ export class DownloadOrchestrator {
 							addedAt: new Date().toISOString(),
 							syncedAt: null,
 							retryCount: 1,
-							lastError: error instanceof Error ? error.message : String(error),
+							lastError: errorMessage,
 							lastAttemptAt: new Date().toISOString(),
 						};
 					} else {
 						trackedItems[collectionKey][item.id].status = "failed";
 						trackedItems[collectionKey][item.id].retryCount++;
-						trackedItems[collectionKey][item.id].lastError =
-							error instanceof Error ? error.message : String(error);
+						trackedItems[collectionKey][item.id].lastError = errorMessage;
 						trackedItems[collectionKey][item.id].lastAttemptAt =
 							new Date().toISOString();
 					}
@@ -122,6 +140,9 @@ export class DownloadOrchestrator {
 			}
 
 			await this.stateManager.saveTrackedItems(userId, trackedItems);
+			logger.info(
+				`[Sync:Orchestrator] Batch ${batchNum}/${totalBatches} complete — enqueued: ${result.enqueued}, failed: ${result.failed}`
+			);
 		}
 
 		return result;

@@ -1,6 +1,9 @@
 import type { DeemixApp } from "@/deemixApp.js";
 import { sessionDZ } from "@/deemixApp.js";
+import { logger } from "@/helpers/logger.js";
+import { getLoginCredentials } from "@/helpers/loginStorage.js";
 import { SyncStateManager, type SyncSettings } from "deemix";
+import { Deezer } from "deezer-sdk";
 import { BrokenAlbumDetector } from "./BrokenAlbumDetector.js";
 import { DownloadOrchestrator } from "./DownloadOrchestrator.js";
 import { FavoritesPoller } from "./FavoritesPoller.js";
@@ -23,6 +26,7 @@ export class SyncService {
 	private intervals: Map<string, NodeJS.Timeout> = new Map();
 	private runningLocks: Map<string, boolean> = new Map();
 	private sessionMap: Map<string, string> = new Map();
+	private arlMap: Map<string, string> = new Map();
 
 	constructor(
 		private deemixApp: DeemixApp,
@@ -32,6 +36,7 @@ export class SyncService {
 
 	async initializeForUser(userId: string, sessionId: string): Promise<void> {
 		this.sessionMap.set(userId, sessionId);
+		this.captureArl(userId, sessionId);
 		const state = await this.stateManager.loadUserState(userId);
 
 		if (state.enabled) {
@@ -41,16 +46,42 @@ export class SyncService {
 
 	async initializeAllUsers(): Promise<void> {
 		const userIds = await this.stateManager.getAllUserIds();
+		logger.info(`[Sync] Initializing sync for ${userIds.length} user(s)`);
 
 		for (const userId of userIds) {
 			const state = await this.stateManager.loadUserState(userId);
+
+			if (!state.enabled) {
+				logger.info(`[Sync] User ${userId}: sync disabled, skipping`);
+				continue;
+			}
+
 			const sessionId = this.findSessionForUser(userId);
-			if (!sessionId) continue;
 
-			this.sessionMap.set(userId, sessionId);
-
-			if (state.enabled) {
+			if (sessionId) {
+				logger.info(
+					`[Sync] User ${userId}: found existing session ${sessionId}`
+				);
+				this.sessionMap.set(userId, sessionId);
+				this.captureArl(userId, sessionId);
 				await this.startSync(userId, sessionId);
+				continue;
+			}
+
+			const arl = this.resolveArl(userId);
+			if (!arl) {
+				logger.warn(
+					`[Sync] User ${userId}: sync enabled but no session or ARL available, deferring until login`
+				);
+				continue;
+			}
+
+			logger.info(
+				`[Sync] User ${userId}: no active session, creating one from stored ARL`
+			);
+			const syntheticSessionId = await this.createSessionFromArl(userId, arl);
+			if (syntheticSessionId) {
+				await this.startSync(userId, syntheticSessionId);
 			}
 		}
 	}
@@ -64,8 +95,101 @@ export class SyncService {
 		return null;
 	}
 
+	private captureArl(userId: string, sessionId: string): void {
+		const dz = sessionDZ[sessionId];
+		if (dz?.loggedIn) {
+			const credentials = getLoginCredentials();
+			if (credentials.arl) {
+				this.arlMap.set(userId, credentials.arl);
+				logger.info(`[Sync] User ${userId}: ARL captured from login storage`);
+			}
+		}
+	}
+
+	private resolveArl(userId: string): string | null {
+		const storedArl = this.arlMap.get(userId);
+		if (storedArl) return storedArl;
+
+		const credentials = getLoginCredentials();
+		if (credentials.arl) {
+			this.arlMap.set(userId, credentials.arl);
+			return credentials.arl;
+		}
+
+		return null;
+	}
+
+	private async createSessionFromArl(
+		userId: string,
+		arl: string
+	): Promise<string | null> {
+		const syntheticId = `sync-${userId}-${Date.now()}`;
+		const dz = new Deezer();
+
+		logger.info(`[Sync] User ${userId}: logging in with ARL...`);
+		const result = await dz.loginViaArl(arl);
+
+		if (!result || !dz.loggedIn || !dz.currentUser) {
+			logger.error(
+				`[Sync] User ${userId}: ARL login failed, sync cannot start`
+			);
+			return null;
+		}
+
+		logger.info(
+			`[Sync] User ${userId}: ARL login successful as ${dz.currentUser.name} (id: ${dz.currentUser.id})`
+		);
+		sessionDZ[syntheticId] = dz;
+		this.sessionMap.set(userId, syntheticId);
+		this.arlMap.set(userId, arl);
+		return syntheticId;
+	}
+
+	private async ensureValidSession(
+		userId: string,
+		sessionId: string
+	): Promise<{ dz: Deezer; sessionId: string }> {
+		const dz = sessionDZ[sessionId];
+		if (dz?.loggedIn && dz.currentUser) {
+			return { dz, sessionId };
+		}
+
+		logger.warn(
+			`[Sync] User ${userId}: session ${sessionId} invalid (missing=${!dz}, loggedIn=${dz?.loggedIn}, hasUser=${!!dz?.currentUser})`
+		);
+
+		const existingSessionId = this.findSessionForUser(userId);
+		if (existingSessionId) {
+			const existingDz = sessionDZ[existingSessionId];
+			if (existingDz?.loggedIn && existingDz.currentUser) {
+				logger.info(
+					`[Sync] User ${userId}: recovered via existing session ${existingSessionId}`
+				);
+				this.sessionMap.set(userId, existingSessionId);
+				this.captureArl(userId, existingSessionId);
+				return { dz: existingDz, sessionId: existingSessionId };
+			}
+		}
+
+		const arl = this.resolveArl(userId);
+		if (!arl) {
+			throw new Error(
+				"Not logged in to Deezer and no ARL available for re-authentication"
+			);
+		}
+
+		logger.info(`[Sync] User ${userId}: re-authenticating with stored ARL...`);
+		const newSessionId = await this.createSessionFromArl(userId, arl);
+		if (!newSessionId) {
+			throw new Error("Failed to re-authenticate with stored ARL");
+		}
+
+		return { dz: sessionDZ[newSessionId], sessionId: newSessionId };
+	}
+
 	async startSync(userId: string, sessionId: string): Promise<void> {
 		this.sessionMap.set(userId, sessionId);
+		this.captureArl(userId, sessionId);
 		const state = await this.stateManager.loadUserState(userId);
 
 		const minInterval = 300000;
@@ -82,13 +206,21 @@ export class SyncService {
 			clearInterval(this.intervals.get(userId)!);
 		}
 
+		logger.info(
+			`[Sync] User ${userId}: starting sync (interval: ${state.settings.interval}ms, batch: ${state.settings.batchSize})`
+		);
+
 		this.runSyncCycle(userId, sessionId).catch((error) => {
-			console.error(`Sync cycle failed for user ${userId}:`, error);
+			logger.error(
+				`[Sync] User ${userId}: initial sync cycle failed: ${error instanceof Error ? error.message : String(error)}`
+			);
 		});
 
 		const interval = setInterval(() => {
 			this.runSyncCycle(userId, sessionId).catch((error) => {
-				console.error(`Sync cycle failed for user ${userId}:`, error);
+				logger.error(
+					`[Sync] User ${userId}: scheduled sync cycle failed: ${error instanceof Error ? error.message : String(error)}`
+				);
 			});
 		}, state.settings.interval);
 
@@ -112,6 +244,8 @@ export class SyncService {
 		state.status = "idle";
 		await this.stateManager.saveUserState(userId, state);
 
+		logger.info(`[Sync] User ${userId}: sync stopped`);
+
 		await this.stateManager.appendEvent(userId, {
 			type: "sync_completed",
 			severity: "info",
@@ -121,7 +255,9 @@ export class SyncService {
 
 	async triggerSyncNow(userId: string, sessionId: string): Promise<void> {
 		this.sessionMap.set(userId, sessionId);
+		this.captureArl(userId, sessionId);
 
+		logger.info(`[Sync] User ${userId}: manual sync triggered`);
 		await this.runSyncCycle(userId, sessionId);
 	}
 
@@ -202,7 +338,7 @@ export class SyncService {
 
 	private async runSyncCycle(userId: string, sessionId: string): Promise<void> {
 		if (this.runningLocks.get(userId)) {
-			console.warn(`Sync already running for user ${userId}, skipping...`);
+			logger.warn(`[Sync] User ${userId}: sync already running, skipping`);
 			return;
 		}
 
@@ -210,19 +346,41 @@ export class SyncService {
 		const startTime = Date.now();
 		const state = await this.stateManager.loadUserState(userId);
 
+		logger.info(`[Sync] User ${userId}: sync cycle starting`);
+
 		try {
 			state.status = "running";
 			state.currentRunStartedAt = new Date().toISOString();
 			await this.stateManager.saveUserState(userId, state);
 
-			const dz = sessionDZ[sessionId];
-			if (!dz || !dz.loggedIn || !dz.currentUser) {
-				throw new Error("Not logged in to Deezer");
-			}
+			const { dz, sessionId: activeSessionId } = await this.ensureValidSession(
+				userId,
+				sessionId
+			);
 
+			logger.info(
+				`[Sync] User ${userId}: authenticated as ${dz.currentUser?.name} (id: ${dz.currentUser?.id}), session: ${activeSessionId}`
+			);
+
+			logger.info(
+				`[Sync] User ${userId}: fetching favorites (scope: ${JSON.stringify(state.settings.scope)})`
+			);
 			const poller = new FavoritesPoller(dz, state.settings.scope);
 			const favorites = await poller.fetchAllFavorites();
+			logger.info(
+				`[Sync] User ${userId}: fetched favorites — tracks: ${favorites.tracks.length}, albums: ${favorites.albums.length}, playlists: ${favorites.playlists.length}, artists: ${favorites.artists.length}`
+			);
+
 			const trackedItems = await this.stateManager.loadTrackedItems(userId);
+			const trackedCounts = {
+				tracks: Object.keys(trackedItems.tracks).length,
+				albums: Object.keys(trackedItems.albums).length,
+				playlists: Object.keys(trackedItems.playlists).length,
+				artists: Object.keys(trackedItems.artists).length,
+			};
+			logger.info(
+				`[Sync] User ${userId}: tracked items — tracks: ${trackedCounts.tracks}, albums: ${trackedCounts.albums}, playlists: ${trackedCounts.playlists}, artists: ${trackedCounts.artists}`
+			);
 
 			const newItems = [
 				...favorites.tracks.filter((t) => !trackedItems.tracks[t.id]),
@@ -249,9 +407,16 @@ export class SyncService {
 				artist: item.artist,
 			}));
 
+			logger.info(
+				`[Sync] User ${userId}: ${newItems.length} new item(s), ${failedItems.length} failed item(s) to retry`
+			);
+
 			const itemsToDownload = [...newItems, ...failedItems];
 
 			if (itemsToDownload.length > 0) {
+				logger.info(
+					`[Sync] User ${userId}: enqueuing ${itemsToDownload.length} item(s) in batches of ${state.settings.batchSize}`
+				);
 				const orchestrator = new DownloadOrchestrator(
 					this.deemixApp,
 					this.stateManager
@@ -259,13 +424,21 @@ export class SyncService {
 
 				const result = await orchestrator.enqueueItems(
 					userId,
-					sessionId,
+					activeSessionId,
 					itemsToDownload,
 					state.settings.batchSize
 				);
 
+				logger.info(
+					`[Sync] User ${userId}: enqueue result — enqueued: ${result.enqueued}, skipped: ${result.skipped}, failed: ${result.failed}`
+				);
+
 				state.statistics.totalSynced += result.enqueued;
 				state.statistics.totalFailed += result.failed;
+			} else {
+				logger.info(
+					`[Sync] User ${userId}: nothing to download, all favorites are tracked`
+				);
 			}
 
 			const detector = new BrokenAlbumDetector();
@@ -276,6 +449,9 @@ export class SyncService {
 			);
 
 			if (brokenAlbums.length > 0) {
+				logger.warn(
+					`[Sync] User ${userId}: ${brokenAlbums.length} broken album(s) detected`
+				);
 				const existingBroken = await this.stateManager.loadBrokenAlbums(userId);
 
 				for (const broken of brokenAlbums) {
@@ -305,12 +481,20 @@ export class SyncService {
 
 			await this.stateManager.saveUserState(userId, state);
 
+			logger.info(
+				`[Sync] User ${userId}: sync cycle completed in ${state.statistics.lastRunDuration}ms`
+			);
+
 			await this.stateManager.appendEvent(userId, {
 				type: "sync_completed",
 				severity: "info",
 				message: `Sync completed successfully`,
 			});
 		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			logger.error(`[Sync] User ${userId}: sync cycle failed: ${errorMessage}`);
+
 			state.status = "error";
 			state.currentRunStartedAt = null;
 			state.lastSyncAt = new Date().toISOString();
@@ -321,9 +505,9 @@ export class SyncService {
 			await this.stateManager.appendEvent(userId, {
 				type: "sync_failed",
 				severity: "error",
-				message: `Sync failed: ${error instanceof Error ? error.message : String(error)}`,
+				message: `Sync failed: ${errorMessage}`,
 				details: {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage,
 				},
 			});
 
@@ -334,6 +518,7 @@ export class SyncService {
 	}
 
 	async shutdown(): Promise<void> {
+		logger.info("[Sync] Shutting down sync service...");
 		for (const [userId, interval] of this.intervals.entries()) {
 			clearInterval(interval);
 
@@ -347,5 +532,7 @@ export class SyncService {
 		this.intervals.clear();
 		this.runningLocks.clear();
 		this.sessionMap.clear();
+		this.arlMap.clear();
+		logger.info("[Sync] Sync service shut down");
 	}
 }

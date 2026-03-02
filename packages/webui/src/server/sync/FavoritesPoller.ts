@@ -1,3 +1,4 @@
+import { logger } from "@/helpers/logger.js";
 import type { Deezer } from "deezer-sdk";
 import type { SyncScope } from "deemix";
 
@@ -104,6 +105,8 @@ export class FavoritesPoller {
 		let start = 0;
 		const batchSize = 1000;
 
+		logger.info("[Sync:Poller] Fetching favorite tracks...");
+
 		while (true) {
 			const batch = await this.dz.gw.get_my_favorite_tracks({
 				limit: batchSize,
@@ -113,6 +116,10 @@ export class FavoritesPoller {
 			if (!batch || batch.length === 0) {
 				break;
 			}
+
+			logger.info(
+				`[Sync:Poller] Fetched tracks batch: ${batch.length} items (offset: ${start})`
+			);
 
 			for (const track of batch) {
 				if (track && track.SNG_ID) {
@@ -133,74 +140,97 @@ export class FavoritesPoller {
 		}
 
 		const seen = new Set<string>();
-		return tracks.filter((track) => {
+		const unique = tracks.filter((track) => {
 			if (seen.has(track.id)) {
 				return false;
 			}
 			seen.add(track.id);
 			return true;
 		});
+
+		logger.info(
+			`[Sync:Poller] Favorite tracks: ${unique.length} unique (${tracks.length - unique.length} duplicates removed)`
+		);
+		return unique;
 	}
 
 	private async fetchFavoriteAlbums(userId: string): Promise<FavoriteAlbum[]> {
+		logger.info("[Sync:Poller] Fetching favorite albums...");
 		const albums = await this.dz.gw.get_user_albums(userId, { limit: -1 });
+		logger.info(`[Sync:Poller] Raw albums response: ${albums.length} items`);
 
 		const result: FavoriteAlbum[] = [];
 
 		for (const album of albums) {
-			if (album && album.ALB_ID) {
+			if (album && album.id) {
 				result.push({
-					id: String(album.ALB_ID),
+					id: String(album.id),
 					type: "album",
-					title: album.ALB_TITLE || "Unknown",
-					artist: album.ART_NAME || "Unknown",
+					title: album.title || "Unknown",
+					artist: album.artist?.name || "Unknown",
 				});
 			}
 		}
 
 		const seen = new Set<string>();
-		return result.filter((album) => {
+		const unique = result.filter((album) => {
 			if (seen.has(album.id)) {
 				return false;
 			}
 			seen.add(album.id);
 			return true;
 		});
+
+		logger.info(
+			`[Sync:Poller] Favorite albums: ${unique.length} unique (${result.length - unique.length} duplicates removed)`
+		);
+		return unique;
 	}
 
 	private async fetchFavoritePlaylists(
 		userId: string
 	): Promise<FavoritePlaylist[]> {
+		logger.info("[Sync:Poller] Fetching favorite playlists...");
 		const playlists = await this.dz.gw.get_user_playlists(userId, {
 			limit: -1,
 		});
+		logger.info(
+			`[Sync:Poller] Raw playlists response: ${playlists.length} items`
+		);
 
 		const result: FavoritePlaylist[] = [];
 
 		for (const playlist of playlists) {
-			if (playlist && playlist.PLAYLIST_ID) {
+			if (playlist && playlist.id) {
 				result.push({
-					id: String(playlist.PLAYLIST_ID),
+					id: String(playlist.id),
 					type: "playlist",
-					title: playlist.TITLE || "Unknown",
+					title: playlist.title || "Unknown",
 				});
 			}
 		}
 
 		const seen = new Set<string>();
-		return result.filter((playlist) => {
+		const unique = result.filter((playlist) => {
 			if (seen.has(playlist.id)) {
 				return false;
 			}
 			seen.add(playlist.id);
 			return true;
 		});
+
+		logger.info(
+			`[Sync:Poller] Favorite playlists: ${unique.length} unique (${result.length - unique.length} duplicates removed)`
+		);
+		return unique;
 	}
 
 	private async fetchFavoriteArtists(
 		userId: string
 	): Promise<FavoriteArtist[]> {
+		logger.info("[Sync:Poller] Fetching favorite artists...");
 		const artists = await this.dz.gw.get_user_artists(userId, { limit: -1 });
+		logger.info(`[Sync:Poller] Raw artists response: ${artists.length} items`);
 
 		const result: FavoriteArtist[] = [];
 
@@ -215,12 +245,17 @@ export class FavoritesPoller {
 		}
 
 		const seen = new Set<string>();
-		return result.filter((artist) => {
+		const unique = result.filter((artist) => {
 			if (seen.has(artist.id)) {
 				return false;
 			}
 			seen.add(artist.id);
 			return true;
 		});
+
+		logger.info(
+			`[Sync:Poller] Favorite artists: ${unique.length} unique (${result.length - unique.length} duplicates removed)`
+		);
+		return unique;
 	}
 }

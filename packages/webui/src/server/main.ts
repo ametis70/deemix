@@ -118,11 +118,17 @@ server.on("listening", getListeningCb(server));
 registerWebsocket(wss, deemixApp);
 
 /* === Sync Service Initialization === */
-syncService.initializeAllUsers().catch((error) => {
-	logger.error(
-		`Failed to initialize sync service: ${error instanceof Error ? error.message : String(error)}`
-	);
-});
+logger.info("[Sync] Starting sync service initialization...");
+syncService
+	.initializeAllUsers()
+	.then(() => {
+		logger.info("[Sync] Sync service initialization completed");
+	})
+	.catch((error) => {
+		logger.error(
+			`[Sync] Failed to initialize sync service: ${error instanceof Error ? error.message : String(error)}`
+		);
+	});
 
 /* === Remove Old logs files === */
 removeOldLogs(5);
