@@ -5,6 +5,7 @@ import { useAppInfoStore } from "@/stores/appInfo";
 import { useErrorStore } from "@/stores/errors";
 import { useLoginStore } from "@/stores/login";
 import { fetchData, postToServer } from "@/utils/api-utils";
+import { isBulkAddActive } from "@/utils/downloads";
 import { socket } from "@/utils/socket";
 import { toast } from "@/utils/toasts";
 import { computed, onMounted, onUnmounted, ref, useTemplateRef } from "vue";
@@ -127,10 +128,12 @@ function addToQueue(queueItem, current = false) {
 				item.silent = true;
 				addToQueue(item);
 			});
-			toast(
-				t("toasts.addedMoreToQueue", { n: queueItem.length }),
-				"playlist_add_check"
-			);
+			if (!isBulkAddActive) {
+				toast(
+					t("toasts.addedMoreToQueue", { n: queueItem.length }),
+					"playlist_add_check"
+				);
+			}
 			return;
 		} else {
 			queueItem = queueItem[0];
@@ -179,7 +182,7 @@ function addToQueue(queueItem, current = false) {
 		startDownload(queueItem.uuid);
 	}
 
-	if (!queueItem.silent) {
+	if (!queueItem.silent && !isBulkAddActive) {
 		toast(
 			t("toasts.addedToQueue", { item: queueItem.title }),
 			"playlist_add_check"

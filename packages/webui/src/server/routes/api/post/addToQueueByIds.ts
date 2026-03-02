@@ -73,29 +73,42 @@ const handler: ApiHandler["handler"] = async (req, res) => {
 		(id: string | number) => `https://www.deezer.com/${normalizedType}/${id}`
 	);
 
-	let obj: any;
+	const results: any[] = [];
+	const errors: any[] = [];
 
-	try {
-		obj = await deemix.addToQueue(dz, urls, resolvedBitrate);
-	} catch (e: any) {
-		res.send({ result: false, errid: e.name, data: { type, ids, bitrate } });
-		switch (e.name) {
-			case "NotLoggedIn":
-				deemix.listener.send("queueError" + e.name);
-				break;
-			case "CantStream":
-				deemix.listener.send("queueError" + e.name, e.bitrate);
-				break;
-			default:
-				logger.error(e);
-				break;
+	// Process URLs individually so each item appears in the sidebar
+	// as soon as it's added to the queue, rather than waiting for
+	// the entire batch to be processed.
+	for (const url of urls) {
+		try {
+			const obj = await deemix.addToQueue(dz, [url], resolvedBitrate);
+			if (obj) results.push(...(Array.isArray(obj) ? obj : [obj]));
+		} catch (e: any) {
+			// NotLoggedIn / CantStream are fatal — stop processing
+			if (e.name === "NotLoggedIn" || e.name === "CantStream") {
+				res.send({
+					result: false,
+					errid: e.name,
+					data: { type, ids, bitrate },
+				});
+				if (e.name === "NotLoggedIn") {
+					deemix.listener.send("queueError" + e.name);
+				} else {
+					deemix.listener.send("queueError" + e.name, e.bitrate);
+				}
+				return;
+			}
+			// Non-fatal errors (e.g. invalid link) — log and continue
+			logger.error(e);
+			errors.push({ url, error: e.message || e.name });
 		}
-		return;
 	}
 
-	res.send({ result: true, data: { type, count: urls.length, obj } });
+	res.send({
+		result: true,
+		data: { type, count: results.length, errors: errors.length, obj: results },
+	});
 };
-
 const apiHandler: ApiHandler = { path, handler };
 
 export default apiHandler;
