@@ -64,27 +64,42 @@ export class DownloadOrchestrator {
 				`[Sync:Orchestrator] Processing batch ${batchNum}/${totalBatches} (${batch.length} items)`
 			);
 
+			// Build all URLs for this batch
+			const urls: string[] = [];
+			const itemMap = new Map<string, FavoriteItem>();
+
 			for (const item of batch) {
-				try {
-					let url: string;
-					switch (item.type) {
-						case "track":
-							url = `https://www.deezer.com/track/${item.id}`;
-							break;
-						case "album":
-							url = `https://www.deezer.com/album/${item.id}`;
-							break;
-						case "playlist":
-							url = `https://www.deezer.com/playlist/${item.id}`;
-							break;
-						case "artist":
-							url = `https://www.deezer.com/artist/${item.id}`;
-							break;
-					}
+				let url: string;
+				switch (item.type) {
+					case "track":
+						url = `https://www.deezer.com/track/${item.id}`;
+						break;
+					case "album":
+						url = `https://www.deezer.com/album/${item.id}`;
+						break;
+					case "playlist":
+						url = `https://www.deezer.com/playlist/${item.id}`;
+						break;
+					case "artist":
+						url = `https://www.deezer.com/artist/${item.id}`;
+						break;
+				}
+				urls.push(url);
+				itemMap.set(url, item);
+			}
 
-					const bitrate = this.deemixApp.settings.maxBitrate;
+			const bitrate = this.deemixApp.settings.maxBitrate;
 
-					await this.deemixApp.addToQueue(dz, [url], bitrate, false);
+			// Make a single addToQueue call with all URLs
+			try {
+				await this.deemixApp.addToQueue(dz, urls, bitrate, false);
+
+				// Mark all items in this batch as successfully enqueued
+				// Note: addToQueue handles individual item errors internally via listeners
+				// and will skip items that fail, but the batch call itself succeeds
+				for (const url of urls) {
+					const item = itemMap.get(url);
+					if (!item) continue;
 
 					const collectionKey = `${item.type}s` as keyof typeof trackedItems;
 					if (!trackedItems[collectionKey][item.id]) {
@@ -107,12 +122,19 @@ export class DownloadOrchestrator {
 					}
 
 					result.enqueued++;
-				} catch (error) {
-					const errorMessage =
-						error instanceof Error ? error.message : String(error);
-					logger.error(
-						`[Sync:Orchestrator] Failed to enqueue ${item.type} "${item.title}" (${item.id}): ${errorMessage}`
-					);
+				}
+			} catch (error) {
+				// If the entire batch fails, mark all items as failed
+				const errorMessage =
+					error instanceof Error ? error.message : String(error);
+				logger.error(
+					`[Sync:Orchestrator] Failed to enqueue batch ${batchNum}: ${errorMessage}`
+				);
+
+				for (const url of urls) {
+					const item = itemMap.get(url);
+					if (!item) continue;
+
 					result.failed++;
 
 					const collectionKey = `${item.type}s` as keyof typeof trackedItems;
